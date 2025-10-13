@@ -192,6 +192,7 @@ void setup() {
   addPeer(unit2Address);
   addPeer(unit3Address);
   addPeer(unit4Address);
+  addPeer(unit5Address);
 }
  
 void sendStart(uint8_t *address, String startMessage) {

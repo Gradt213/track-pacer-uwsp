@@ -4,16 +4,16 @@
 This note captures the April 2025 investigation into pacing drift across the Track Pacer ESP32 controllers. The audit focused on the Expo app’s BLE command pipeline and the embedded firmware in `sketches/mainUnit*.cpp`.
 
 ## Critical Bugs
-- **Segment math mismatch (`helpers/ble.js:74-145`)**  
-  The app divides each lap into five equal delays (`segmentDelayMs = lapDuration * 1000 / 5`), but the firmware assumes four segments (`sketches/mainUnit1.cpp:92` and `sketches/mainUnit2.cpp:49`). Unit 2 therefore lights up after 20% of the lap while its internal pacing expects a 25% window, cascading desync for Units 3–5.
-- **Unit 5 peer never registered (`sketches/mainUnit1.cpp:18`, `:134`, `:154`)**  
-  The mobile app emits a `five` command, yet the master controller never calls `addPeer(unit5Address)`. The ESP-NOW send silently fails, so the last controller never starts with the rest.
-- **Dangling trigger timers (`helpers/ble.js:103-145`, `:158-167`)**  
-  `setTimeout` calls queue downstream triggers, but `sendStop` lacks `clearTimeout`. Stopping or restarting mid-lap still fires stale `two`/`three`/`four`/`five` commands, reawakening remote units out of phase.
+- **Segment math mismatch (`helpers/ble.js:75-119`) — resolved**  
+  The app previously divided each lap into five equal delays while the firmware assumed four segments, causing downstream units to fire early. The mobile app now uses a four-way division to match firmware timing.
+- **Unit 5 peer never registered (`sketches/mainUnit1.cpp:18`, `:134`, `:192-195`) — resolved**  
+  The master controller now registers the Unit 5 MAC address during setup, allowing ESP-NOW broadcasts to reach the final junction box.
+- **Dangling trigger timers (`helpers/ble.js:105-139`, `:163-192`) — resolved**  
+  Timeout handles are tracked and cleared whenever a workout stops or restarts, preventing stale triggers from reigniting downstream units.
 
-## Recommended Fixes
-1. Align the segment count on both app and firmware (either shift the app to four segments or adjust every ESP sketch to five). Validate the resulting lap timing on hardware.
-2. Register every active peer in `setup()` and surface `esp_now_send` failures so missing devices are obvious during field tests.
-3. Track timeout handles in `sendPacer` and cancel them inside `sendStop()` and before launching a fresh lap to prevent orphaned triggers.
+## Post-Fix Follow-Ups
+1. Validate the refreshed pacing cadence on hardware to confirm lap timing stays consistent across all units.
+2. Surface `esp_now_send` failures prominently in serial logs to aid future field diagnostics.
+3. Expand automated coverage in the Expo app around pacing calculations to catch regressions early.
 
-Tackle the segment math first; it drives the largest observed drift. Once the protocol is consistent, re-run pacing trials and expand unit tests around the timing utilities to catch future regressions.
+With the protocol now consistent, focus on on-track validation and additional monitoring to ensure long-term reliability.

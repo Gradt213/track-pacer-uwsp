@@ -10,6 +10,7 @@ class BLEHelper {
     this.manager = new BleManager();
     this.device = null;
     this.connectionStatus = false;
+    this.triggerTimeouts = [];
   }
 
   setConnectionStatus(status) {
@@ -76,11 +77,12 @@ class BLEHelper {
       console.error("No device connected.");
       return;
     }
-  
+    this.clearPendingTriggers();
+
     const lapDuration = parseFloat(duration) / parseFloat(distance);
     console.log(`Duration: ${duration}`);
     console.log(`Lap duration: ${lapDuration}`);
-    const segmentDelayMs = (lapDuration * 1000) / 5;
+    const segmentDelayMs = (lapDuration * 1000) / 4;
     const fullLapDelayMs = lapDuration * 1000;
   
     for (let lap = 0; lap < distance; lap++) {
@@ -100,49 +102,10 @@ class BLEHelper {
         );
         console.log("Sent start command to Unit 1");
   
-        setTimeout(async () => {
-          const twoMsg = `two`;
-          console.log(`Sending to Unit 2: ${twoMsg}`);
-          const twoBase64 = Buffer.from(twoMsg, "utf-8").toString("base64");
-          await this.device.writeCharacteristicWithResponseForService(
-            UART_SERVICE_UUID,
-            TX_CHARACTERISTIC_UUID,
-            twoBase64
-          );
-        }, segmentDelayMs);
-  
-        setTimeout(async () => {
-          const threeMsg = `three`;
-          console.log(`Sending to Unit 3: ${threeMsg}`);
-          const threeBase64 = Buffer.from(threeMsg, "utf-8").toString("base64");
-          await this.device.writeCharacteristicWithResponseForService(
-            UART_SERVICE_UUID,
-            TX_CHARACTERISTIC_UUID,
-            threeBase64
-          );
-        }, segmentDelayMs * 2);
-  
-        setTimeout(async () => {
-          const fourMsg = `four`;
-          console.log(`Sending to Unit 4: ${fourMsg}`);
-          const fourBase64 = Buffer.from(fourMsg, "utf-8").toString("base64");
-          await this.device.writeCharacteristicWithResponseForService(
-            UART_SERVICE_UUID,
-            TX_CHARACTERISTIC_UUID,
-            fourBase64
-          );
-        }, segmentDelayMs * 3);
-
-        setTimeout(async () => {
-          const fiveMsg = `five`;
-          console.log(`Sending to Unit 5: ${fiveMsg}`);
-          const fiveBase64 = Buffer.from(fiveMsg, "utf-8").toString("base64");
-          await this.device.writeCharacteristicWithResponseForService(
-            UART_SERVICE_UUID,
-            TX_CHARACTERISTIC_UUID,
-            fiveBase64
-          );
-        }, segmentDelayMs * 4);
+        this.scheduleTrigger("two", segmentDelayMs);
+        this.scheduleTrigger("three", segmentDelayMs * 2);
+        this.scheduleTrigger("four", segmentDelayMs * 3);
+        this.scheduleTrigger("five", segmentDelayMs * 4);
   
       } catch (error) {
         console.error("Error sending pacer sequence:", error);
@@ -157,6 +120,7 @@ class BLEHelper {
   
   async sendStop() {
     const stop = `stop`;
+    this.clearPendingTriggers();
     if (!this.device) {
       console.error("No device connected.");
       return;
@@ -194,6 +158,37 @@ class BLEHelper {
   
   getConnectionStatus() {
     return this.connectionStatus;
+  }
+
+  clearPendingTriggers() {
+    this.triggerTimeouts.forEach((timeout) => clearTimeout(timeout));
+    this.triggerTimeouts = [];
+  }
+
+  scheduleTrigger(message, delay) {
+    const handle = setTimeout(async () => {
+      if (!this.device) {
+        return;
+      }
+      try {
+        console.log(`Sending to Unit (${message.toUpperCase()}): ${message}`);
+        const encoded = Buffer.from(message, "utf-8").toString("base64");
+        await this.device.writeCharacteristicWithResponseForService(
+          UART_SERVICE_UUID,
+          TX_CHARACTERISTIC_UUID,
+          encoded
+        );
+        console.log(`Sent ${message} command`);
+      } catch (error) {
+        console.error(`Error sending ${message} command:`, error);
+      } finally {
+        this.triggerTimeouts = this.triggerTimeouts.filter(
+          (storedHandle) => storedHandle !== handle
+        );
+      }
+    }, delay);
+
+    this.triggerTimeouts.push(handle);
   }
 }
 
